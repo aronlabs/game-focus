@@ -6,6 +6,7 @@ mod tray;
 mod ui;
 
 use eframe::egui::{self, Vec2, ViewportBuilder, ViewportCommand};
+use parking_lot::Mutex;
 use state::AppState;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -13,11 +14,14 @@ use tray::SystemTray;
 use tray_icon::menu::MenuEvent;
 use tray_icon::TrayIconEvent;
 
-struct GameFocusApp {
-    state: AppState,
-    tray: Option<SystemTray>,
-    should_quit: Arc<AtomicBool>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayAction {
+    Show,
+    Quit,
+    Rescan,
 }
+
+static PENDING_ACTIONS: Mutex<Vec<TrayAction>> = Mutex::new(Vec::new());
 
 fn restore_and_focus_window(ctx: &egui::Context) {
     ctx.send_viewport_cmd(ViewportCommand::Visible(true));
@@ -26,44 +30,35 @@ fn restore_and_focus_window(ctx: &egui::Context) {
 
     #[cfg(windows)]
     unsafe {
-        use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
         use windows_sys::Win32::System::Threading::GetCurrentProcessId;
         use windows_sys::Win32::UI::WindowsAndMessaging::{
-            EnumWindows, GetWindowThreadProcessId, SetForegroundWindow, ShowWindow, SW_RESTORE,
-            SW_SHOW,
+            FindWindowW, GetWindowThreadProcessId, SetForegroundWindow,
+            ShowWindow, SW_RESTORE, SW_SHOW,
         };
 
-        unsafe extern "system" fn enum_proc(hwnd: HWND, _lparam: LPARAM) -> BOOL {
+        let title: Vec<u16> = "Game Focus Manager\0".encode_utf16().collect();
+        let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+        if !hwnd.is_null() {
             let mut pid = 0;
             GetWindowThreadProcessId(hwnd, &mut pid);
             if pid == GetCurrentProcessId() {
                 ShowWindow(hwnd, SW_RESTORE);
                 ShowWindow(hwnd, SW_SHOW);
                 SetForegroundWindow(hwnd);
-                return 0; // Found main window, stop
             }
-            1
         }
-
-        let _ = EnumWindows(Some(enum_proc), 0);
     }
+}
+
+struct GameFocusApp {
+    state: AppState,
+    tray: Option<SystemTray>,
+    should_quit: Arc<AtomicBool>,
 }
 
 impl GameFocusApp {
     fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // Set dark theme default
         cc.egui_ctx.set_visuals(egui::Visuals::dark());
-
-        // Ensure tray menu & click events wake up eframe's event loop even when the window is hidden!
-        let ctx_menu = cc.egui_ctx.clone();
-        MenuEvent::set_event_handler(Some(move |_| {
-            ctx_menu.request_repaint();
-        }));
-
-        let ctx_tray = cc.egui_ctx.clone();
-        TrayIconEvent::set_event_handler(Some(move |_| {
-            ctx_tray.request_repaint();
-        }));
 
         let tray = match SystemTray::new() {
             Ok(t) => Some(t),
@@ -72,6 +67,44 @@ impl GameFocusApp {
                 None
             }
         };
+
+        if let Some(t) = &tray {
+            let show_id = t.show_item_id.clone();
+            let quit_id = t.quit_item_id.clone();
+            let rescan_id = t.rescan_item_id.clone();
+            let ctx_menu = cc.egui_ctx.clone();
+
+            // Menu handler: push action and wake up eframe
+            MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+                if event.id == show_id {
+                    PENDING_ACTIONS.lock().push(TrayAction::Show);
+                } else if event.id == quit_id {
+                    PENDING_ACTIONS.lock().push(TrayAction::Quit);
+                } else if event.id == rescan_id {
+                    PENDING_ACTIONS.lock().push(TrayAction::Rescan);
+                }
+                ctx_menu.request_repaint();
+            }));
+
+            let ctx_tray = cc.egui_ctx.clone();
+            // Tray icon click handler: left click or double click restores window
+            TrayIconEvent::set_event_handler(Some(move |event: TrayIconEvent| {
+                match event {
+                    TrayIconEvent::Click {
+                        button: tray_icon::MouseButton::Left,
+                        ..
+                    }
+                    | TrayIconEvent::DoubleClick {
+                        button: tray_icon::MouseButton::Left,
+                        ..
+                    } => {
+                        PENDING_ACTIONS.lock().push(TrayAction::Show);
+                        ctx_tray.request_repaint();
+                    }
+                    _ => {}
+                }
+            }));
+        }
 
         Self {
             state: AppState::new(),
@@ -83,33 +116,33 @@ impl GameFocusApp {
 
 impl eframe::App for GameFocusApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // 1. Process tray menu events
-        while let Ok(event) = MenuEvent::receiver().try_recv() {
-            if let Some(tray) = &self.tray {
-                if event.id == tray.quit_item_id {
+        // 1. Drain pending tray actions
+        let actions: Vec<TrayAction> = {
+            let mut lock = PENDING_ACTIONS.lock();
+            std::mem::take(&mut *lock)
+        };
+
+        let mut just_restored = false;
+        for action in actions {
+            match action {
+                TrayAction::Quit => {
                     self.should_quit.store(true, Ordering::Relaxed);
                     ctx.send_viewport_cmd(ViewportCommand::Close);
-                } else if event.id == tray.show_item_id {
+                }
+                TrayAction::Show => {
                     restore_and_focus_window(ctx);
-                } else if event.id == tray.rescan_item_id {
+                    just_restored = true;
+                }
+                TrayAction::Rescan => {
                     self.state.rescan();
                     restore_and_focus_window(ctx);
+                    just_restored = true;
                 }
             }
         }
 
-        // 2. Process tray icon click events (single or double click restores window)
-        while let Ok(event) = TrayIconEvent::receiver().try_recv() {
-            match event {
-                TrayIconEvent::Click { .. } | TrayIconEvent::DoubleClick { .. } => {
-                    restore_and_focus_window(ctx);
-                }
-                _ => {}
-            }
-        }
-
-        // 3. Handle window close -> minimize to system tray unless Quit was selected
-        if ctx.input(|i| i.viewport().close_requested()) {
+        // 2. Handle window close -> minimize to system tray unless Quit was selected
+        if !just_restored && ctx.input(|i| i.viewport().close_requested()) {
             if !self.should_quit.load(Ordering::Relaxed) && self.tray.is_some() {
                 ctx.send_viewport_cmd(ViewportCommand::CancelClose);
                 ctx.send_viewport_cmd(ViewportCommand::Visible(false));
@@ -117,11 +150,11 @@ impl eframe::App for GameFocusApp {
             }
         }
 
-        // 4. Render main UI
+        // 3. Render main UI
         ui::render_ui(&mut self.state, ctx);
 
-        // Keep polling for tray events smoothly
-        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        // Keep polling smoothly
+        ctx.request_repaint_after(std::time::Duration::from_millis(150));
     }
 }
 
