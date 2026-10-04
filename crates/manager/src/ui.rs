@@ -256,25 +256,32 @@ fn render_game_card(state: &mut AppState, ui: &mut egui::Ui, id: &str) {
 
             ui.add_space(6.0);
 
-            // Toggles Row
+            // Toggles Row with descriptive tooltips
             ui.horizontal(|ui| {
                 if ui
                     .checkbox(&mut game.spoof_focus, "Spoof Focus")
+                    .on_hover_text("Tricks the game engine into believing it is always the focused foreground window, preventing pause menus, background throttling, and deactivation.")
                     .changed()
                 {
                     settings_changed = true;
                 }
-                if ui.checkbox(&mut game.keep_audio, "Keep Audio").changed() {
+                if ui
+                    .checkbox(&mut game.keep_audio, "Keep Audio")
+                    .on_hover_text("Prevents the game from muting sound when you switch to another monitor or application.")
+                    .changed()
+                {
                     settings_changed = true;
                 }
                 if ui
                     .checkbox(&mut game.background_controller, "Background Controller")
+                    .on_hover_text("Forces gamepads (Xbox, PlayStation, DirectInput, SDL) to remain active and send inputs to the game while in the background.")
                     .changed()
                 {
                     settings_changed = true;
                 }
                 if ui
                     .checkbox(&mut game.unlock_cursor, "Unlock Cursor")
+                    .on_hover_text("Bypasses ClipCursor so your mouse can freely leave the game window and move to your other monitors without getting trapped.")
                     .changed()
                 {
                     settings_changed = true;

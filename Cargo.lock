@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "game-focus-manager"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "eframe",
  "egui",
@@ -1076,7 +1076,7 @@ dependencies = [
 
 [[package]]
 name = "game-focus-proxy"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "minhook",
  "parking_lot",
@@ -1085,7 +1085,7 @@ dependencies = [
 
 [[package]]
 name = "game-focus-scanner"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
