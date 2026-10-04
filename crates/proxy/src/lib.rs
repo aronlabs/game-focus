@@ -14,6 +14,8 @@ use config::Config;
 #[cfg(windows)]
 use hooks::initialize_hooks;
 #[cfg(windows)]
+use hooks::focus::probe_and_subclass_existing_window;
+#[cfg(windows)]
 use hooks::input::try_hook_dinput8;
 #[cfg(windows)]
 use logger::{init_logger, log};
@@ -54,11 +56,14 @@ pub unsafe extern "system" fn DllMain(
 
                 initialize_hooks(&config);
 
-                // For the first 10 seconds of process life, periodically probe for dinput8
-                if config.enabled && config.background_controller {
+                // For the first 10 seconds of process life, periodically probe for window and dinput8
+                if config.enabled {
                     for _ in 0..5 {
                         thread::sleep(Duration::from_secs(2));
-                        try_hook_dinput8();
+                        probe_and_subclass_existing_window();
+                        if config.background_controller {
+                            try_hook_dinput8();
+                        }
                     }
                 }
             });

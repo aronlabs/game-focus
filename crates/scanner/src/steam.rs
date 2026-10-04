@@ -88,29 +88,9 @@ pub fn find_main_executable(game_dir: &Path) -> Option<PathBuf> {
 
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    // Check Binaries/Win64 first (Unreal Engine convention)
-    let ue_dir = game_dir.join("Binaries").join("Win64");
-    if ue_dir.is_dir() {
-        if let Ok(entries) = fs::read_dir(&ue_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().and_then(|s| s.to_str()) == Some("exe") {
-                    let name = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-                    if !excluded.iter().any(|ex| name.contains(ex)) {
-                        return Some(path);
-                    }
-                }
-            }
-        }
-    }
-
-    // Walk up to 2 directories deep from game_dir
+    // 1. Walk up to 5 directories deep looking for game executables
     for entry in WalkDir::new(game_dir)
-        .max_depth(3)
+        .max_depth(5)
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -128,11 +108,31 @@ pub fn find_main_executable(game_dir: &Path) -> Option<PathBuf> {
         }
     }
 
-    // Sort candidates: prefer those matching folder name or largest file size
     if candidates.is_empty() {
         return None;
     }
 
+    // 2. High priority: Unreal Engine Shipping binaries (e.g. *Binaries/Win64/*-Shipping.exe)
+    if let Some(shipping) = candidates.iter().find(|p| {
+        let path_str = p.to_string_lossy().to_lowercase();
+        path_str.contains("shipping.exe")
+            || (path_str.contains("binaries") && path_str.contains("win64"))
+    }) {
+        return Some(shipping.clone());
+    }
+
+    // 3. High priority: 64-bit engine folders (e.g. bin/x64, bin/win64)
+    if let Some(bin64) = candidates.iter().find(|p| {
+        let path_str = p.to_string_lossy().to_lowercase();
+        path_str.contains("bin/x64")
+            || path_str.contains("bin\\x64")
+            || path_str.contains("bin/win64")
+            || path_str.contains("bin\\win64")
+    }) {
+        return Some(bin64.clone());
+    }
+
+    // 4. Prefer candidates matching folder name
     let folder_name = game_dir
         .file_name()
         .and_then(|s| s.to_str())
@@ -148,7 +148,11 @@ pub fn find_main_executable(game_dir: &Path) -> Option<PathBuf> {
         return Some(matching.clone());
     }
 
-    // Fall back to first candidate
+    // 5. Prefer root-level executables if no nested engine executable matched
+    if let Some(root_exe) = candidates.iter().find(|p| p.parent() == Some(game_dir)) {
+        return Some(root_exe.clone());
+    }
+
     candidates.into_iter().next()
 }
 
@@ -284,5 +288,22 @@ mod tests {
         assert_eq!(appid, "1245620");
         assert_eq!(name, "ELDEN RING");
         assert_eq!(installdir, "ELDEN RING");
+    }
+
+    #[test]
+    fn test_ue4_nested_executable_detection() {
+        let temp_dir = std::env::temp_dir().join("test_ue4_structure");
+        let _ = fs::remove_dir_all(&temp_dir);
+        let bin_dir = temp_dir.join("JH").join("Binaries").join("Win64");
+        fs::create_dir_all(&bin_dir).unwrap();
+
+        fs::write(temp_dir.join("Wandering_Sword.exe"), b"launcher").unwrap();
+        let shipping_exe = bin_dir.join("JH-Win64-Shipping.exe");
+        fs::write(&shipping_exe, b"real game").unwrap();
+
+        let found = find_main_executable(&temp_dir);
+        assert_eq!(found, Some(shipping_exe));
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

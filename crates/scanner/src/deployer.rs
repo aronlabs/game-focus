@@ -65,7 +65,13 @@ pub fn deploy_hook(profile: &GameProfile, dll_bytes: &[u8]) -> io::Result<()> {
 
     let ini_path = profile.exe_dir.join("focus_hook.ini");
     let ini_content = generate_ini(profile);
-    fs::write(&ini_path, ini_content)?;
+    fs::write(&ini_path, &ini_content)?;
+
+    // If executable is nested (e.g. Unreal Engine Binaries/Win64), also copy to install_dir
+    if profile.install_dir.is_dir() && profile.install_dir != profile.exe_dir {
+        let _ = fs::write(profile.install_dir.join("version.dll"), dll_bytes);
+        let _ = fs::write(profile.install_dir.join("focus_hook.ini"), &ini_content);
+    }
 
     Ok(())
 }
@@ -73,15 +79,25 @@ pub fn deploy_hook(profile: &GameProfile, dll_bytes: &[u8]) -> io::Result<()> {
 pub fn remove_hook(profile: &GameProfile) -> io::Result<()> {
     let dll_path = profile.exe_dir.join("version.dll");
     if dll_path.exists() {
-        fs::remove_file(dll_path)?;
+        fs::remove_file(&dll_path)?;
+    }
+    if profile.install_dir.is_dir() && profile.install_dir != profile.exe_dir {
+        let root_dll = profile.install_dir.join("version.dll");
+        if root_dll.exists() {
+            let _ = fs::remove_file(root_dll);
+        }
     }
     Ok(())
 }
 
 pub fn update_config(profile: &GameProfile) -> io::Result<()> {
-    let ini_path = profile.exe_dir.join("focus_hook.ini");
     let ini_content = generate_ini(profile);
-    fs::write(&ini_path, ini_content)?;
+    let ini_path = profile.exe_dir.join("focus_hook.ini");
+    fs::write(&ini_path, &ini_content)?;
+
+    if profile.install_dir.is_dir() && profile.install_dir != profile.exe_dir {
+        let _ = fs::write(profile.install_dir.join("focus_hook.ini"), &ini_content);
+    }
     Ok(())
 }
 
