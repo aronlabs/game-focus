@@ -68,6 +68,23 @@ unsafe fn cache_main_hwnd() {
     }
 }
 
+#[cfg(windows)]
+unsafe fn win32_show_and_restore() {
+    cache_main_hwnd();
+    use windows_sys::Win32::Foundation::HWND;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        BringWindowToTop, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
+    };
+
+    let hwnd = MAIN_HWND.load(Ordering::Acquire) as HWND;
+    if !hwnd.is_null() {
+        ShowWindow(hwnd, SW_SHOW);
+        ShowWindow(hwnd, SW_RESTORE);
+        BringWindowToTop(hwnd);
+        SetForegroundWindow(hwnd);
+    }
+}
+
 fn hide_to_tray(ctx: &egui::Context) {
     ctx.send_viewport_cmd(ViewportCommand::CancelClose);
 
@@ -87,20 +104,10 @@ fn hide_to_tray(ctx: &egui::Context) {
 fn restore_and_focus_window(ctx: &egui::Context) {
     #[cfg(windows)]
     unsafe {
-        cache_main_hwnd();
-        use windows_sys::Win32::Foundation::HWND;
-        use windows_sys::Win32::UI::WindowsAndMessaging::{
-            SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
-        };
-
-        let hwnd = MAIN_HWND.load(Ordering::Acquire) as HWND;
-        if !hwnd.is_null() {
-            ShowWindow(hwnd, SW_SHOW);
-            ShowWindow(hwnd, SW_RESTORE);
-            SetForegroundWindow(hwnd);
-        }
+        win32_show_and_restore();
     }
 
+    ctx.send_viewport_cmd(ViewportCommand::Minimized(false));
     ctx.send_viewport_cmd(ViewportCommand::Focus);
     ctx.request_repaint();
 }
@@ -131,10 +138,18 @@ impl GameFocusApp {
 
             MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
                 if event.id == show_id {
+                    #[cfg(windows)]
+                    unsafe {
+                        win32_show_and_restore();
+                    }
                     PENDING_ACTIONS.lock().push(TrayAction::Show);
                 } else if event.id == quit_id {
                     PENDING_ACTIONS.lock().push(TrayAction::Quit);
                 } else if event.id == rescan_id {
+                    #[cfg(windows)]
+                    unsafe {
+                        win32_show_and_restore();
+                    }
                     PENDING_ACTIONS.lock().push(TrayAction::Rescan);
                 }
                 ctx_menu.request_repaint();
@@ -151,6 +166,10 @@ impl GameFocusApp {
                         button: tray_icon::MouseButton::Left,
                         ..
                     } => {
+                        #[cfg(windows)]
+                        unsafe {
+                            win32_show_and_restore();
+                        }
                         PENDING_ACTIONS.lock().push(TrayAction::Show);
                         ctx_tray.request_repaint();
                     }
@@ -199,12 +218,11 @@ impl eframe::App for GameFocusApp {
             }
         }
 
-        // 2. Handle minimize to tray (via UI button, close button, or title bar minimize)
+        // 2. Handle minimize to tray (via UI button or close 'X' button)
         let close_requested = ctx.input(|i| i.viewport().close_requested());
         let minimize_clicked = self.state.minimize_requested;
-        let window_minimized = ctx.input(|i| i.viewport().minimized == Some(true));
 
-        if !just_restored && (close_requested || minimize_clicked || window_minimized) {
+        if !just_restored && (close_requested || minimize_clicked) {
             if !self.should_quit.load(Ordering::Relaxed) && self.tray.is_some() {
                 hide_to_tray(ctx);
                 self.state.minimize_requested = false;
