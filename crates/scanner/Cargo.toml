@@ -2,6 +2,8 @@
 name = "game-focus-scanner"
 version = "0.1.2"
 edition = "2021"
+license = "MIT"
+authors = ["Aron Gustafson"]
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

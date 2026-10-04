@@ -58,6 +58,7 @@ jobs:
           cp target/x86_64-pc-windows-gnu/release/version.dll package/
           cp focus_hook.ini package/
           cp README.md package/
+          cp LICENSE package/
           cd package
           zip -r ../game-focus-${{ steps.vars.outputs.tag }}-windows-x64.zip .
           cd ..
@@ -76,5 +77,6 @@ jobs:
             target/x86_64-pc-windows-gnu/release/game-focus-manager.exe
             target/x86_64-pc-windows-gnu/release/version.dll
             focus_hook.ini
+            LICENSE
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

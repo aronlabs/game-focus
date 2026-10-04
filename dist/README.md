@@ -1,73 +1,66 @@
-# Game Focus Proxy (Drop-in Hook for Windows)
+# Game Focus Manager (Windows)
 
-A zero-overhead, drop-in proxy DLL for Windows games that keeps windowed games fully active, retains controller/gamepad responsiveness, and prevents audio muting when you switch focus or multitask.
+A lightweight, zero-overhead desktop utility and drop-in proxy hook that keeps windowed games fully active in the background when multitasking, prevents audio muting, keeps controllers/gamepads responsive, and optionally frees your mouse cursor across monitors.
 
----
+Authored by [Aron Gustafson](https://github.com/aronlabs) ([aronlabs](https://github.com/aronlabs)).
 
-## What It Solves
-
-- **Window Focus Spoofing**: Intercepts `GetForegroundWindow`, `GetActiveWindow`, `GetFocus`, and rewrites `WM_ACTIVATE` / `WM_KILLFOCUS` so the game engine believes it is always the focused foreground window.
-- **Audio Stays Active**: Bypasses the internal "mute on lost focus" routines built into Unreal, Unity, and custom engines.
-- **Background Gamepad Input**:
-  - **XInput (Xbox controllers)**: Continues reading inputs because the game never enters its paused background polling state.
-  - **DirectInput8**: Intercepts `SetCooperativeLevel` and replaces `DISCL_FOREGROUND` with `DISCL_BACKGROUND`.
-  - **SDL2 / SDL3**: Automatically applies `SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1`.
-- **Optional Cursor Freedom**: Intercepts `ClipCursor` so the mouse cursor is never trapped inside the window when you want to move to another monitor.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ---
 
-## Quick Start (How to Test on Your Gaming PC)
+## Features
 
-1. **Locate your game folder**:
-   - For a Steam game, right click game -> **Manage** -> **Browse local files**.
-   - Find the folder containing the main game `.exe` (for Unreal Engine games, look in `GameName/Binaries/Win64/`).
-
-2. **Copy the files**:
-   - Copy `version.dll` (from `target/x86_64-pc-windows-gnu/release/version.dll`) directly into the folder next to the game executable.
-   - (Optional) Copy `focus_hook.ini` next to it to customize behavior. If omitted, default settings are automatically generated.
-
-3. **Launch the game in Windowed or Borderless Windowed mode**.
-
-4. **Test**:
-   - Alt-Tab or click onto your second monitor/browser.
-   - Sound should continue playing.
-   - Moving your gamepad thumbsticks or pressing buttons should still control the game in real-time.
-
-5. **Uninstall / Disable**:
-   - Simply delete or rename `version.dll`.
+- **Automatic Multi-Drive Scanning**:
+  - **Steam**: Reads `libraryfolders.vdf` and `.acf` manifests across all installed drives (C:, D:, secondary SSDs/HDDs) and locates game executables automatically.
+  - **Epic Games Launcher**: Scans all `%ProgramData%\Epic\EpicGamesLauncher\Data\Manifests\*.item` files.
+  - **Custom Games**: Click **"➕ Add Custom Game"** to select any standalone `.exe` (GOG, emulators, Xbox app, standalone games).
+- **One-Click Deploy & Clean Removal**:
+  - Click **"Enable"** on any game: the manager drops `version.dll` and generates `focus_hook.ini` directly into the game folder.
+  - Click **"Disable"**: cleanly removes `version.dll`.
+- **System Tray Integration**:
+  - Minimizing or closing the window sends it to the Windows system tray with quick options: *Show*, *Rescan*, and *Quit*.
+- **In-Game Hooks**:
+  - **Focus Spoofing**: Intercepts `GetForegroundWindow`, `GetActiveWindow`, `GetFocus`, and rewrites `WM_ACTIVATE` / `WM_KILLFOCUS` so game engines believe they are always the focused foreground window.
+  - **Audio in Background**: Bypasses the "mute when lost focus" routine.
+  - **Controller Input**: XInput games stay active, DirectInput8 cooperative levels are set to background (`DISCL_BACKGROUND`), and SDL2/3 environment variables (`SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS=1`) are injected.
+  - **Unlock Mouse Cursor**: Intercepts `ClipCursor` so the mouse cursor is never trapped inside the game window when you want to move across multiple monitors.
 
 ---
 
-## Configuration (`focus_hook.ini`)
+## Quick Start
 
-```ini
-[Settings]
-; Master toggle (false disables all hooks)
-enabled = true
+1. Copy the `dist/` folder or `game-focus-manager.exe` to your gaming PC.
+2. Launch `game-focus-manager.exe`.
+3. It will automatically scan your Steam libraries across all drives and Epic Games.
+4. Click **"Enable"** next to any game you want to play in the background.
+5. Launch the game in **Windowed** or **Borderless Windowed** mode.
 
-; Spoof foreground focus so the engine thinks it's active
-spoof_focus = true
+---
 
-; Prevent game from muting audio in background
-keep_audio = true
+## Architecture & Project Structure
 
-; Force DirectInput/XInput/SDL controllers to work in background
-background_controller = true
-
-; Release mouse cursor bounds so it can leave the window freely
-unlock_cursor = false
-
-; Write debug events to focus_hook.log
-log_debug = true
+```text
+game-focus/
+├── crates/
+│   ├── proxy/       # The in-game version.dll proxy hook (MinHook detours)
+│   ├── scanner/     # Multi-drive Steam VDF & Epic manifest discovery engine
+│   └── manager/     # Native DirectX/Win32 egui GUI with system tray
+└── dist/            # Compiled ready-to-run Windows binaries
 ```
 
----
+### Building from Source
 
-## Build from Source
-
-On Linux (cross-compile) or Windows (native):
+Using Rust and the `x86_64-pc-windows-gnu` target:
 ```bash
-cargo build --release --target x86_64-pc-windows-gnu
+# 1. Compile proxy DLL
+cargo build --release -p game-focus-proxy --target x86_64-pc-windows-gnu
+
+# 2. Compile desktop manager (embeds the compiled proxy DLL)
+cargo build --release -p game-focus-manager --target x86_64-pc-windows-gnu
 ```
-The compiled DLL is output to:
-`target/x86_64-pc-windows-gnu/release/version.dll`
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). You are completely free to use, copy, modify, merge, publish, distribute, sublicense, and sell copies of this software for any purpose without restriction.

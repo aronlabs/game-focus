@@ -2,6 +2,10 @@
 
 A lightweight, zero-overhead desktop utility and drop-in proxy hook that keeps windowed games fully active in the background when multitasking, prevents audio muting, keeps controllers/gamepads responsive, and optionally frees your mouse cursor across monitors.
 
+Authored by [Aron Gustafson](https://github.com/aronlabs) ([aronlabs](https://github.com/aronlabs)).
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 ---
 
 ## Features
@@ -54,3 +58,9 @@ cargo build --release -p game-focus-proxy --target x86_64-pc-windows-gnu
 # 2. Compile desktop manager (embeds the compiled proxy DLL)
 cargo build --release -p game-focus-manager --target x86_64-pc-windows-gnu
 ```
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). You are completely free to use, copy, modify, merge, publish, distribute, sublicense, and sell copies of this software for any purpose without restriction.
