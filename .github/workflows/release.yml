@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag name to release (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - name: Install MinGW-w64 and Zip
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mingw-w64 zip
+
+      - name: Compile proxy DLL (version.dll)
+        run: |
+          cargo build --release -p game-focus-proxy --target x86_64-pc-windows-gnu
+
+      - name: Compile desktop manager (game-focus-manager.exe)
+        run: |
+          cargo build --release -p game-focus-manager --target x86_64-pc-windows-gnu
+
+      - name: Determine tag name
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package Release Archive
+        run: |
+          mkdir -p package
+          cp target/x86_64-pc-windows-gnu/release/game-focus-manager.exe package/
+          cp target/x86_64-pc-windows-gnu/release/version.dll package/
+          cp focus_hook.ini package/
+          cp README.md package/
+          cd package
+          zip -r ../game-focus-${{ steps.vars.outputs.tag }}-windows-x64.zip .
+          cd ..
+          ls -lh *.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          name: Game Focus ${{ steps.vars.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            game-focus-${{ steps.vars.outputs.tag }}-windows-x64.zip
+            target/x86_64-pc-windows-gnu/release/game-focus-manager.exe
+            target/x86_64-pc-windows-gnu/release/version.dll
+            focus_hook.ini
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
