@@ -21,6 +21,7 @@ pub struct AppState {
     pub search_query: String,
     pub filter: FilterCategory,
     pub status_message: Option<(String, Instant)>,
+    pub minimize_requested: bool,
 }
 
 impl AppState {
@@ -30,6 +31,7 @@ impl AppState {
             search_query: String::new(),
             filter: FilterCategory::All,
             status_message: None,
+            minimize_requested: false,
         };
         state.rescan();
         state

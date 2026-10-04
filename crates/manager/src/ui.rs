@@ -30,6 +30,13 @@ fn render_header(state: &mut AppState, ui: &mut egui::Ui) {
         );
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui
+                .button(RichText::new("📥 Minimize to Tray").size(12.0).color(Color32::WHITE))
+                .clicked()
+            {
+                state.minimize_requested = true;
+            }
+
             if let Some(status) = state.status() {
                 ui.label(
                     RichText::new(status)

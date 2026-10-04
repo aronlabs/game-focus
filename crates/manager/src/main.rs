@@ -32,20 +32,40 @@ unsafe fn cache_main_hwnd() {
     use windows_sys::Win32::Foundation::{BOOL, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::GetCurrentProcessId;
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+        EnumWindows, FindWindowW, GetWindowTextW, GetWindowThreadProcessId,
     };
 
     unsafe extern "system" fn enum_proc(hwnd: HWND, _lparam: LPARAM) -> BOOL {
         let mut pid = 0;
         GetWindowThreadProcessId(hwnd, &mut pid);
-        if pid == GetCurrentProcessId() && IsWindowVisible(hwnd) != 0 {
-            MAIN_HWND.store(hwnd as isize, Ordering::Release);
-            return 0; // Found main window
+        if pid == GetCurrentProcessId() {
+            let mut buf = [0u16; 128];
+            let len = GetWindowTextW(hwnd, buf.as_mut_ptr(), 128);
+            if len > 0 {
+                let text = String::from_utf16_lossy(&buf[..len as usize]);
+                if text.contains("Game Focus Manager") {
+                    MAIN_HWND.store(hwnd as isize, Ordering::Release);
+                    return 0; // Found main window
+                }
+            }
         }
         1
     }
 
     let _ = EnumWindows(Some(enum_proc), 0);
+
+    // Direct fallback search by exact window title
+    if MAIN_HWND.load(Ordering::Relaxed) == 0 {
+        let title: Vec<u16> = "Game Focus Manager\0".encode_utf16().collect();
+        let hwnd = FindWindowW(std::ptr::null(), title.as_ptr());
+        if !hwnd.is_null() {
+            let mut pid = 0;
+            GetWindowThreadProcessId(hwnd, &mut pid);
+            if pid == GetCurrentProcessId() {
+                MAIN_HWND.store(hwnd as isize, Ordering::Release);
+            }
+        }
+    }
 }
 
 fn hide_to_tray(ctx: &egui::Context) {
@@ -53,6 +73,7 @@ fn hide_to_tray(ctx: &egui::Context) {
 
     #[cfg(windows)]
     unsafe {
+        cache_main_hwnd();
         use windows_sys::Win32::Foundation::HWND;
         use windows_sys::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
 
@@ -66,6 +87,7 @@ fn hide_to_tray(ctx: &egui::Context) {
 fn restore_and_focus_window(ctx: &egui::Context) {
     #[cfg(windows)]
     unsafe {
+        cache_main_hwnd();
         use windows_sys::Win32::Foundation::HWND;
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
@@ -177,10 +199,15 @@ impl eframe::App for GameFocusApp {
             }
         }
 
-        // 2. Handle window close -> minimize to system tray unless Quit was selected
-        if !just_restored && ctx.input(|i| i.viewport().close_requested()) {
+        // 2. Handle minimize to tray (via UI button, close button, or title bar minimize)
+        let close_requested = ctx.input(|i| i.viewport().close_requested());
+        let minimize_clicked = self.state.minimize_requested;
+        let window_minimized = ctx.input(|i| i.viewport().minimized == Some(true));
+
+        if !just_restored && (close_requested || minimize_clicked || window_minimized) {
             if !self.should_quit.load(Ordering::Relaxed) && self.tray.is_some() {
                 hide_to_tray(ctx);
+                self.state.minimize_requested = false;
                 self.state.set_status("Minimized to system tray");
             }
         }
