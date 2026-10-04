@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "crates/proxy",
+    "crates/scanner",
+    "crates/manager",
 ]
 resolver = "2"
 
