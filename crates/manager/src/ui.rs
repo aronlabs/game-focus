@@ -31,6 +31,13 @@ fn render_header(state: &mut AppState, ui: &mut egui::Ui) {
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
+                .button(RichText::new("🚪 Exit").size(12.0).color(Color32::from_rgb(248, 113, 113)))
+                .clicked()
+            {
+                state.quit_requested = true;
+            }
+
+            if ui
                 .button(RichText::new("📥 Minimize to Tray").size(12.0).color(Color32::WHITE))
                 .clicked()
             {

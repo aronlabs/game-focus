@@ -22,6 +22,7 @@ pub struct AppState {
     pub filter: FilterCategory,
     pub status_message: Option<(String, Instant)>,
     pub minimize_requested: bool,
+    pub quit_requested: bool,
 }
 
 impl AppState {
@@ -32,6 +33,7 @@ impl AppState {
             filter: FilterCategory::All,
             status_message: None,
             minimize_requested: false,
+            quit_requested: false,
         };
         state.rescan();
         state

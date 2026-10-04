@@ -145,6 +145,7 @@ impl GameFocusApp {
                     PENDING_ACTIONS.lock().push(TrayAction::Show);
                 } else if event.id == quit_id {
                     PENDING_ACTIONS.lock().push(TrayAction::Quit);
+                    std::process::exit(0);
                 } else if event.id == rescan_id {
                     #[cfg(windows)]
                     unsafe {
@@ -203,8 +204,7 @@ impl eframe::App for GameFocusApp {
         for action in actions {
             match action {
                 TrayAction::Quit => {
-                    self.should_quit.store(true, Ordering::Relaxed);
-                    ctx.send_viewport_cmd(ViewportCommand::Close);
+                    std::process::exit(0);
                 }
                 TrayAction::Show => {
                     restore_and_focus_window(ctx);
@@ -230,6 +230,9 @@ impl eframe::App for GameFocusApp {
             }
         }
 
+        if self.state.quit_requested {
+            std::process::exit(0);
+        }
         // 3. Render main UI
         ui::render_ui(&mut self.state, ctx);
 
